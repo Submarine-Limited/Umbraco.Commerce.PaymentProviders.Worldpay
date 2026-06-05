@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <Title>Umbraco Commerce Worldpay SMB Payment Provider</Title>
+    <Description>Worldpay SMB payment provider for Umbraco Commerce</Description>
+    <StaticWebAssetBasePath>App_Plugins/UmbracoCommerceWorldpaySmbPaymentProvider</StaticWebAssetBasePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Flurl.Http" />
+    <PackageReference Include="Umbraco.Commerce.Core" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+{
+    "name": "Umbraco Commerce Worldpay SMB Payment Provider",
+    "$schema": "../umbraco-package-schema.json",
+    "extensions": [
+        {
+            "type": "localization",
+            "alias": "UmbracoCommerce.PaymentProviders.WorldpaySmb.Localization.En",
+            "weight": -100,
+            "name": "English",
+            "meta": {
+                "culture": "en"
+            },
+            "js": "/App_Plugins/UmbracoCommerceWorldpaySmbPaymentProvider/lang/en.js"
+        }
+    ],
+    "version": ""
+}

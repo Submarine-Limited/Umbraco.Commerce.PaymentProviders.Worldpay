@@ -6,16 +6,11 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Transactions;
-using System.Web;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
 using Umbraco.Commerce.Common.Logging;
-using Umbraco.Commerce.Core;
 using Umbraco.Commerce.Core.Api;
 using Umbraco.Commerce.Core.Models;
 using Umbraco.Commerce.Core.PaymentProviders;
-using Umbraco.Commerce.Core.Services;
 using Umbraco.Commerce.Extensions;
 using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Api;
 using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Api.Models;
@@ -27,19 +22,13 @@ namespace Umbraco.Commerce.PaymentProviders.WorldpaySMB;
 public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 {
     private readonly ILogger<WorldpaySMBPaymentProvider> _logger;
-    private readonly IOrderService _orderService;
 
     public override bool FinalizeAtContinueUrl => false;
 
-    public WorldpaySMBPaymentProvider(
-        UmbracoCommerceContext ctx,
-        ILogger<WorldpaySMBPaymentProvider> logger,
-        IOrderService orderService)
+    public WorldpaySMBPaymentProvider(UmbracoCommerceContext ctx, ILogger<WorldpaySMBPaymentProvider> logger)
         : base(ctx)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _orderService = orderService ?? throw new ArgumentNullException(nameof(orderService));
-
     }
 
     public override async Task<PaymentFormResult> GenerateFormAsync(PaymentProviderContext<WorldpaySMBSettings> ctx, CancellationToken cancellationToken = default)
@@ -108,7 +97,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
                 Value = new()
                 {
                     Currency = currencyCode,
-                    Amount = (int)(decimalAmount * 100),
+                    Amount = (int)AmountToMinorUnits(decimalAmount),
                 },
                 Narrative = new()
                 {
@@ -182,7 +171,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 
         var body = await ctx.HttpContext.Request.ReadFromJsonAsync<WorldpaySMBWebhookEvent>(cancellationToken).ConfigureAwait(false);
 
-        if (body.EventDetails.Type == "sentForAuthorization")
+        if (body.EventDetails.Type != "authorized")
         {
             return await base.GetOrderReferenceAsync(ctx, cancellationToken).ConfigureAwait(false);
         }
@@ -209,7 +198,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
             return await base.GetOrderReferenceAsync(ctx, cancellationToken).ConfigureAwait(false);
         }
 
-        var order = await _orderService.GetOrderAsync(orderId).ConfigureAwait(false);
+        var order = await CommerceApi.Instance.GetOrderAsync(orderId).ConfigureAwait(false);
 
         if (order != null)
         {
@@ -237,14 +226,14 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 
         if (eventData["transactionType"] == "authorized")
         {
-            var totalAmount = decimal.Parse(eventData["authAmount"], CultureInfo.InvariantCulture);
+            var totalAmount = int.Parse(eventData["authAmount"], CultureInfo.InvariantCulture);
             var transactionId = eventData["transId"];
 
             _logger.Info($"Payment call back for cart {ctx.Order.OrderNumber} payment authorised");
 
             return Task.FromResult(CallbackResult.Ok(new TransactionInfo
             {
-                AmountAuthorized = totalAmount,
+                AmountAuthorized = AmountFromMinorUnits(totalAmount),
                 TransactionFee = 0m,
                 TransactionId = transactionId,
                 PaymentStatus = PaymentStatus.Authorized

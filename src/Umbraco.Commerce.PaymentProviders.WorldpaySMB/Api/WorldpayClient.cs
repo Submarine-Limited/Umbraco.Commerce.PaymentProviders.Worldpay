@@ -1,4 +1,5 @@
 using System;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -29,13 +30,29 @@ public class WorldpayClient
             PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace
         });
 
-        return await RequestAsync("/payment_pages", async (req, ct) => await req
+        return await RequestAsync("/payment_pages", WorldpaySMBConstants.Client.Headers.PaymentPagesContentType, async (req, ct) => await req
                 .PostJsonAsync(data, cancellationToken: ct)
                 .ReceiveJson<WorldpaySMBTransactionUrl>().ConfigureAwait(false),
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<TResult> RequestAsync<TResult>(string url, Func<IFlurlRequest, CancellationToken, Task<TResult>> func, CancellationToken cancellationToken = default)
+    public async Task<WorldpaySMBTransaction> QueryTransactionAsync(string transactionRef, CancellationToken cancellationToken = default)
+    {
+        return await RequestAsync($"/paymentQueries/payments?transactionReference={transactionRef}", WorldpaySMBConstants.Client.Headers.PaymentQueriesContentType, async (req, ct) => await req
+            .SendAsync(HttpMethod.Get, cancellationToken: ct)
+            .ReceiveJson<WorldpaySMBTransaction>().ConfigureAwait(false),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<WorldpaySMBPayment> QueryPaymentAsync(string paymentId, CancellationToken cancellationToken = default)
+    {
+        return await RequestAsync($"/paymentQueries/payments/{paymentId}", WorldpaySMBConstants.Client.Headers.PaymentQueriesContentType, async (req, ct) => await req
+            .SendAsync(HttpMethod.Get, cancellationToken: ct)
+            .ReceiveJson<WorldpaySMBPayment>().ConfigureAwait(false),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<TResult> RequestAsync<TResult>(string url, string contentType, Func<IFlurlRequest, CancellationToken, Task<TResult>> func, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -46,8 +63,8 @@ public class WorldpayClient
                     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                     PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace
                 }))
-                .WithHeader("Accept", WorldpaySMBConstants.Client.Headers.ContentType)
-                .WithHeader("Content-Type", WorldpaySMBConstants.Client.Headers.ContentType)
+                .WithHeader("Accept", contentType)
+                .WithHeader("Content-Type", contentType)
                 .WithBasicAuth(_config.Username, _config.Password);
 
             return await func.Invoke(request, cancellationToken).ConfigureAwait(false);

@@ -20,7 +20,8 @@ public static class WorldpaySMBConstants
 
         public static class Headers
         {
-            public const string ContentType = "application/vnd.worldpay.payment_pages-v1.hal+json";
+            public const string PaymentPagesContentType = "application/vnd.worldpay.payment_pages-v1.hal+json";
+            public const string PaymentQueriesContentType = "application/vnd.worldpay.payment-queries-v1.hal+json";
         }
     }
 }

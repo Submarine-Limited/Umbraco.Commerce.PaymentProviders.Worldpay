@@ -14,7 +14,6 @@ using Umbraco.Commerce.Core.PaymentProviders;
 using Umbraco.Commerce.Extensions;
 using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Api;
 using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Api.Models;
-using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Helpers;
 
 namespace Umbraco.Commerce.PaymentProviders.WorldpaySMB;
 
@@ -23,7 +22,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 {
     private readonly ILogger<WorldpaySMBPaymentProvider> _logger;
 
-    public override bool FinalizeAtContinueUrl => false;
+    public override bool FinalizeAtContinueUrl => true;
 
     public WorldpaySMBPaymentProvider(UmbracoCommerceContext ctx, ILogger<WorldpaySMBPaymentProvider> logger)
         : base(ctx)
@@ -208,42 +207,118 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
         return await base.GetOrderReferenceAsync(ctx, cancellationToken).ConfigureAwait(false);
     }
 
-    public override Task<CallbackResult> ProcessCallbackAsync(PaymentProviderContext<WorldpaySMBSettings> ctx, CancellationToken cancellationToken = default)
+    public override async Task<CallbackResult> ProcessCallbackAsync(PaymentProviderContext<WorldpaySMBSettings> ctx, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(ctx.Order);
+        ArgumentNullException.ThrowIfNull(ctx.Settings);
 
-        // The request stream is processed inside GetOrderReferenceAsync and the relevant data
-        // is stored in the payment provider context to prevent needing to re-process it
-        // so we just access it directly from the context assuming it exists.
-        var eventData = ctx.AdditionalData["eventData"] as NameValueCollection;
+        // Get the transaction reference from the order
+        var transactionRef = ctx.Order.Properties.FirstOrDefault(x => x.Key == WorldpaySMBConstants.Client.TransactionReferenceAlias).Value.ToString();
 
-        _logger.Info($"Payment call back for cart {ctx.Order.OrderNumber}");
+        if (string.IsNullOrWhiteSpace(transactionRef))
+        {
+            return CallbackResult.BadRequest();
+        }
+
+        var clientConfig = GetWorldpayClientConfig(ctx.Settings);
+        var client = new WorldpayClient(_logger, clientConfig);
+
+        // We need to poll the transaction periodically until we get data back from Worldpay.
+        // Sometimes it hasn't authorised by the time we return to the Continute Url
+        WorldpaySMBTransaction transaction = null;
+        var attempts = 0;
+        var maxAttempts = 20;
+
+        while (transaction == null && attempts < maxAttempts)
+        {
+            attempts++;
+            var transactionAttempt = await client.QueryTransactionAsync(transactionRef, cancellationToken).ConfigureAwait(false);
+
+            if (transactionAttempt != null && transactionAttempt.EmbeddedData.Payments.Count > 0)
+            {
+                transaction = transactionAttempt;
+            }
+            else
+            {
+                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (transaction == null)
+        {
+            _logger.Error($"Transaction could not be retrieved from Worldpay after {attempts}/{maxAttempts} attempts");
+            return CallbackResult.BadRequest();
+        }
 
         if (ctx.Settings.VerboseLogging)
         {
-            _logger.Info($"Worldpay data {eventData.ToFriendlyString()}");
+            _logger.Error($"Transaction retrieved from Worldpay after {attempts}/{maxAttempts} attempts");
+            _logger.Info($"Worldpay transaction data {JsonSerializer.Serialize(transaction)}");
         }
 
-        if (eventData["transactionType"] == "authorized")
+        var paymentId = transaction.EmbeddedData.Payments.FirstOrDefault()?.PaymentId;
+        if (string.IsNullOrWhiteSpace(paymentId))
         {
-            var totalAmount = int.Parse(eventData["authAmount"], CultureInfo.InvariantCulture);
-            var transactionId = eventData["transId"];
+            _logger.Error("Payment Id could not be found from the transaction");
+            return CallbackResult.BadRequest();
+        }
 
-            _logger.Info($"Payment call back for cart {ctx.Order.OrderNumber} payment authorised");
+        // Now we have the payment id, we need to poll Worldpay for the payment status
+        WorldpaySMBPayment payment = null;
+        attempts = 0;
+        List<string> processableEvents = ["authorizationSucceeded", "authorizationRefused", "authorizationFailed", "authorizationTimedOut"];
 
-            return Task.FromResult(CallbackResult.Ok(new TransactionInfo
+        while (payment == null && attempts < maxAttempts)
+        {
+            attempts++;
+
+            var paymentAttempt = await client.QueryPaymentAsync(paymentId, cancellationToken).ConfigureAwait(false);
+
+            if (paymentAttempt != null && paymentAttempt.Events.Any(x => processableEvents.Contains(x.EventName)))
             {
-                AmountAuthorized = AmountFromMinorUnits(totalAmount),
-                TransactionFee = 0m,
-                TransactionId = transactionId,
-                PaymentStatus = PaymentStatus.Authorized
-            }));
-        }
-        else
-        {
-            _logger.Info($"Payment call back for cart {ctx.Order.OrderNumber} payment not authorised or error");
+                payment = paymentAttempt;
+            }
+            else
+            {
+                await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        return Task.FromResult(CallbackResult.Ok());
+        if (payment == null)
+        {
+            _logger.Error($"Payment could not be retrieved from Worldpay after {attempts}/{maxAttempts} attempts");
+            return CallbackResult.BadRequest();
+        }
+
+        if (ctx.Settings.VerboseLogging)
+        {
+            _logger.Info($"Payment retrieved from Worldpay after {attempts}/{maxAttempts} attempts");
+            _logger.Info($"Worldpay payment data {JsonSerializer.Serialize(payment)}");
+        }
+
+        // Get the latest processable event
+        var lastEvent = payment.Events.Where(x => processableEvents.Contains(x.EventName)).OrderByDescending(x => x.Timestamp).FirstOrDefault();
+
+        var paymentStatus = PaymentStatus.Initialized;
+        switch (lastEvent.EventName)
+        {
+            case "authorizationSucceeded":
+                paymentStatus = PaymentStatus.Authorized;
+                break;
+            case "authorizationRefused":
+            case "authorizationFailed":
+            case "authorizationTimedOut":
+                paymentStatus = PaymentStatus.Error;
+                break;
+        }
+
+        return CallbackResult.Ok(new TransactionInfo
+        {
+            AmountAuthorized = AmountFromMinorUnits(payment.Value.Amount),
+            TransactionFee = 0m,
+            TransactionId = payment.TransactionReference,
+            PaymentStatus = paymentStatus,
+        });
     }
 }

@@ -19,13 +19,8 @@ public abstract class WorldpaySMBPaymentProviderBase : PaymentProviderBase<World
         return ctx.Settings.CancelUrl;
     }
 
-    public override string GetContinueUrl(PaymentProviderContext<WorldpaySMBSettings> ctx)
-    {
-        ctx.Settings.MustNotBeNull("ctx.Settings");
-        ctx.Settings.ContinueUrl.MustNotBeNull("ctx.Settings.ContinueUrl");
-
-        return ctx.Settings.ContinueUrl;
-    }
+    public override string GetContinueUrl(PaymentProviderContext<WorldpaySMBSettings> ctx) =>
+        $"{WorldpaySMBConstants.Urls.ApiReturnUrl}/{ctx.Order.PaymentInfo.PaymentMethodId}/{ctx.Order.Id}";
 
     public override string GetErrorUrl(PaymentProviderContext<WorldpaySMBSettings> ctx)
     {
@@ -33,23 +28,5 @@ public abstract class WorldpaySMBPaymentProviderBase : PaymentProviderBase<World
         ctx.Settings.ErrorUrl.MustNotBeNull("ctx.Settings.ErrorUrl");
 
         return ctx.Settings.ErrorUrl;
-    }
-
-    protected WorldpaySMBClientConfig GetWorldpayClientConfig(WorldpaySMBSettings settings)
-    {
-        if (!settings.TestMode)
-        {
-            return new WorldpaySMBClientConfig(
-                settings.LiveUsername,
-                settings.LivePassword,
-                WorldpaySMBConstants.Urls.LiveBaseUrl);
-        }
-        else
-        {
-            return new WorldpaySMBClientConfig(
-                settings.TestUsername,
-                settings.TestPassword,
-                WorldpaySMBConstants.Urls.TestBaseUrl);
-        }
     }
 }

@@ -14,6 +14,7 @@ using Umbraco.Commerce.Core.PaymentProviders;
 using Umbraco.Commerce.Extensions;
 using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Api;
 using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Api.Models;
+using Umbraco.Commerce.PaymentProviders.WorldpaySMB.Helpers;
 
 namespace Umbraco.Commerce.PaymentProviders.WorldpaySMB;
 
@@ -22,7 +23,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 {
     private readonly ILogger<WorldpaySMBPaymentProvider> _logger;
 
-    public override bool FinalizeAtContinueUrl => true;
+    public override bool FinalizeAtContinueUrl => false;
 
     public WorldpaySMBPaymentProvider(UmbracoCommerceContext ctx, ILogger<WorldpaySMBPaymentProvider> logger)
         : base(ctx)
@@ -128,11 +129,10 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
                     {
                         Email = email,
                     },
-                },
-                ThreeDS = "disabled",
+                }
             };
 
-            var clientConfig = GetWorldpayClientConfig(ctx.Settings);
+            var clientConfig = WorldpaySMBClientHelper.GetWorldpayClientConfig(ctx.Settings);
             var client = new WorldpayClient(_logger, clientConfig);
 
             var transactionUrl = await client.CreateTransactionAsync(transactionData, cancellationToken).ConfigureAwait(false);
@@ -165,6 +165,8 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 
     public override async Task<OrderReference> GetOrderReferenceAsync(PaymentProviderContext<WorldpaySMBSettings> ctx, CancellationToken cancellationToken = default)
     {
+        _logger.Info($"Hit the webhook {DateTime.Now}");
+
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(ctx.Settings);
 
@@ -209,6 +211,8 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 
     public override async Task<CallbackResult> ProcessCallbackAsync(PaymentProviderContext<WorldpaySMBSettings> ctx, CancellationToken cancellationToken = default)
     {
+        _logger.Info($"Hit the finalize bit {DateTime.Now}");
+
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(ctx.Order);
         ArgumentNullException.ThrowIfNull(ctx.Settings);
@@ -221,7 +225,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
             return CallbackResult.BadRequest();
         }
 
-        var clientConfig = GetWorldpayClientConfig(ctx.Settings);
+        var clientConfig = WorldpaySMBClientHelper.GetWorldpayClientConfig(ctx.Settings);
         var client = new WorldpayClient(_logger, clientConfig);
 
         // We need to poll the transaction periodically until we get data back from Worldpay.
@@ -253,7 +257,7 @@ public class WorldpaySMBPaymentProvider : WorldpaySMBPaymentProviderBase
 
         if (ctx.Settings.VerboseLogging)
         {
-            _logger.Error($"Transaction retrieved from Worldpay after {attempts}/{maxAttempts} attempts");
+            _logger.Info($"Transaction retrieved from Worldpay after {attempts}/{maxAttempts} attempts");
             _logger.Info($"Worldpay transaction data {JsonSerializer.Serialize(transaction)}");
         }
 

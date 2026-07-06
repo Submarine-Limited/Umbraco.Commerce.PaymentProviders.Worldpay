@@ -5,7 +5,7 @@ namespace Umbraco.Commerce.PaymentProviders.WorldpaySMB
     public class WorldpaySMBSettings
     {
         [PaymentProviderSetting(SortOrder = 1000)]
-        public string ContinueUrl { get; set; }
+        public string SuccessUrl { get; set; }
 
         [PaymentProviderSetting(SortOrder = 2000)]
         public string CancelUrl { get; set; }
@@ -43,19 +43,19 @@ namespace Umbraco.Commerce.PaymentProviders.WorldpaySMB
         public string EntityId { get; set; }
 
         [PaymentProviderSetting(SortOrder = 12000)]
-        public string TestUsername { get; set; }
+        public string TryModeUsername { get; set; }
 
         [PaymentProviderSetting(SortOrder = 13000)]
-        public string TestPassword { get; set; }
+        public string TryModePassword { get; set; }
 
         [PaymentProviderSetting(SortOrder = 14000)]
-        public string LiveUsername { get; set; }
+        public string LiveModeUsername { get; set; }
 
         [PaymentProviderSetting(SortOrder = 15000)]
-        public string LivePassword { get; set; }
+        public string LiveModePassword { get; set; }
 
         [PaymentProviderSetting(SortOrder = 17000)]
-        public bool TestMode { get; set; }
+        public bool TryMode { get; set; }
 
 
         // ============================

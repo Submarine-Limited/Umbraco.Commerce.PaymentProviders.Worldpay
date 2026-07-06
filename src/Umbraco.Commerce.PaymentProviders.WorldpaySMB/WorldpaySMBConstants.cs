@@ -8,8 +8,9 @@ public static class WorldpaySMBConstants
 {
     public static class Urls
     {
-        public const string LiveBaseUrl = "https://access.worldpay.com";
-        public const string TestBaseUrl = "https://try.access.worldpay.com";
+        public const string LiveModeBaseUrl = "https://access.worldpay.com";
+        public const string TryModeBaseUrl = "https://try.access.worldpay.com";
+        public const string ApiReturnUrl = "/api/v1/payments/worldpay-smb/callback";
     }
 
     public static class Client
